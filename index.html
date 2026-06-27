@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0f1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Times — Multiplication Trainer</title>
+<style>
+  :root{
+    --bg:#0f1117; --bg2:#141823;
+    --card:#181c27; --card2:#1f2433;
+    --line:#2a3040;
+    --text:#e8eaf0; --muted:#8b93a7; --faint:#5b6275;
+    --accent:#6366f1; --accent2:#818cf8;
+    --good:#34d399; --good-dim:#0f3d31;
+    --bad:#f87171; --bad-dim:#43181b;
+    --warn:#fbbf24;
+    --r:18px;
+    --pad-h:62px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%, #1b2030 0%, var(--bg) 55%);
+    color:var(--text); -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column; min-height:100%;
+    overscroll-behavior:none;
+  }
+  .wrap{width:100%; max-width:520px; margin:0 auto; padding:18px 16px 28px; flex:1; display:flex; flex-direction:column;}
+
+  /* ---------- top bar ---------- */
+  header{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .logo{display:flex; align-items:center; gap:9px; font-weight:800; letter-spacing:.3px; font-size:18px;}
+  .logo .x{
+    width:26px; height:26px; border-radius:8px; display:grid; place-items:center;
+    background:linear-gradient(135deg,var(--accent),#a855f7); color:#fff; font-size:15px; box-shadow:0 4px 14px rgba(99,102,241,.4);
+  }
+  .logo small{color:var(--muted); font-weight:600; font-size:11px; letter-spacing:1.5px; text-transform:uppercase;}
+
+  .tabs{display:flex; gap:4px; background:var(--card); border:1px solid var(--line); padding:4px; border-radius:14px; margin-bottom:16px;}
+  .tab{
+    flex:1; border:0; background:transparent; color:var(--muted); font-weight:700; font-size:13.5px;
+    padding:9px 4px; border-radius:10px; cursor:pointer; transition:.18s; font-family:inherit;
+  }
+  .tab.active{background:var(--accent); color:#fff; box-shadow:0 4px 12px rgba(99,102,241,.35);}
+  .tab:not(.active):hover{color:var(--text);}
+
+  /* ---------- controls strip ---------- */
+  #controls{margin-bottom:14px;}
+  .ctl-label{font-size:11px; text-transform:uppercase; letter-spacing:1.4px; color:var(--faint); font-weight:700; margin:0 2px 8px;}
+  .chips{display:flex; flex-wrap:wrap; gap:7px;}
+  .chip{
+    border:1px solid var(--line); background:var(--card); color:var(--muted);
+    min-width:40px; height:40px; padding:0 6px; border-radius:11px; font-weight:700; font-size:15px;
+    cursor:pointer; transition:.14s; font-family:inherit;
+  }
+  .chip:hover{border-color:var(--accent2); color:var(--text);}
+  .chip.on{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .chip.solo.on{background:#a855f7; border-color:#a855f7;}
+  .dur{display:flex; gap:8px; margin-bottom:12px;}
+  .dur .chip{flex:1;}
+  .start-btn{
+    width:100%; border:0; border-radius:14px; padding:15px; font-size:16px; font-weight:800; cursor:pointer;
+    background:linear-gradient(135deg,var(--accent),#a855f7); color:#fff; box-shadow:0 8px 22px rgba(99,102,241,.4); font-family:inherit;
+  }
+  .start-btn:active{transform:translateY(1px);}
+
+  /* ---------- session stat chips ---------- */
+  .stats{display:flex; gap:8px; margin-bottom:14px;}
+  .stat{
+    flex:1; background:var(--card); border:1px solid var(--line); border-radius:13px; padding:10px 6px; text-align:center;
+  }
+  .stat .v{font-size:20px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums;}
+  .stat .k{font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--faint); margin-top:5px; font-weight:700;}
+  .stat.hot .v{color:var(--warn);}
+
+  /* ---------- drill card ---------- */
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:24px; padding:26px 20px 22px;
+    box-shadow:0 20px 50px rgba(0,0,0,.35);
+  }
+  .problem{
+    text-align:center; font-weight:800; font-variant-numeric:tabular-nums;
+    font-size:clamp(46px,15vw,76px); line-height:1; letter-spacing:1px;
+    animation:pop .22s ease;
+  }
+  .problem .op{color:var(--accent2); margin:0 .12em; font-weight:600;}
+  @keyframes pop{from{opacity:0; transform:translateY(8px) scale(.96);} to{opacity:1; transform:none;}}
+
+  .answer{
+    margin:18px auto 4px; height:64px; border-radius:14px; background:var(--bg2); border:2px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:34px; font-weight:800;
+    font-variant-numeric:tabular-nums; transition:.12s; letter-spacing:2px;
+  }
+  .answer.empty{color:var(--faint); font-weight:600;}
+  .answer.good{border-color:var(--good); background:var(--good-dim); color:var(--good);}
+  .answer.bad{border-color:var(--bad); background:var(--bad-dim); color:var(--bad); animation:shake .3s;}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+  .hint{text-align:center; height:18px; color:var(--bad); font-size:13px; font-weight:700; margin-bottom:10px; opacity:0; transition:.2s;}
+  .hint.show{opacity:1;}
+
+  /* ---------- numpad ---------- */
+  .pad{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:8px;}
+  .key{
+    height:var(--pad-h); border:1px solid var(--line); background:var(--card2); color:var(--text);
+    border-radius:15px; font-size:25px; font-weight:700; cursor:pointer; font-family:inherit;
+    transition:transform .05s, background .12s; -webkit-user-select:none; user-select:none;
+  }
+  .key:active{transform:translateY(2px); background:var(--accent);}
+  .key.util{background:var(--bg2); color:var(--muted); font-size:20px;}
+  .key.util:active{background:var(--card2);}
+
+  .kbhint{text-align:center; color:var(--faint); font-size:11.5px; margin-top:14px;}
+  .kbhint b{color:var(--muted); background:var(--bg2); padding:1px 6px; border-radius:5px; border:1px solid var(--line); font-weight:600;}
+
+  /* ---------- progress panel ---------- */
+  .pstats{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px;}
+  .pstat{background:var(--card); border:1px solid var(--line); border-radius:15px; padding:15px;}
+  .pstat .v{font-size:27px; font-weight:800; font-variant-numeric:tabular-nums;}
+  .pstat .k{font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--faint); margin-top:4px; font-weight:700;}
+
+  .htitle{display:flex; align-items:center; justify-content:space-between; margin:6px 2px 12px;}
+  .htitle h3{margin:0; font-size:15px;}
+  .legend{display:flex; align-items:center; gap:5px; font-size:10px; color:var(--faint);}
+  .legend i{width:13px; height:13px; border-radius:3px; display:inline-block;}
+
+  .heat{display:grid; grid-template-columns:auto repeat(12,1fr); gap:3px; background:var(--card); border:1px solid var(--line); padding:12px; border-radius:18px;}
+  .hc{aspect-ratio:1; border-radius:4px; display:grid; place-items:center; font-size:9px; font-weight:700; color:rgba(255,255,255,.55); cursor:default;}
+  .hc.lbl{color:var(--faint); background:transparent !important; font-size:10px;}
+  .heat-info{text-align:center; color:var(--muted); font-size:12.5px; min-height:18px; margin-top:12px; font-variant-numeric:tabular-nums;}
+
+  .reset{margin:20px auto 0; display:block; background:transparent; border:1px solid var(--line); color:var(--muted); padding:10px 16px; border-radius:11px; font-weight:600; cursor:pointer; font-family:inherit; font-size:13px;}
+  .reset:hover{border-color:var(--bad); color:var(--bad);}
+
+  /* ---------- speed result overlay ---------- */
+  .overlay{position:fixed; inset:0; background:rgba(8,10,16,.86); backdrop-filter:blur(6px); display:none; align-items:center; justify-content:center; padding:20px; z-index:50;}
+  .overlay.show{display:flex; animation:fade .25s;}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .result{background:var(--card); border:1px solid var(--line); border-radius:24px; padding:30px 26px; width:100%; max-width:360px; text-align:center; box-shadow:0 30px 70px rgba(0,0,0,.5);}
+  .result h2{margin:0 0 4px; font-size:15px; text-transform:uppercase; letter-spacing:2px; color:var(--muted);}
+  .result .big{font-size:64px; font-weight:800; line-height:1; margin:6px 0; background:linear-gradient(135deg,var(--accent2),#c084fc); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;}
+  .result .sub{color:var(--muted); font-size:13px; margin-bottom:20px;}
+  .result-row{display:flex; gap:10px; margin-bottom:22px;}
+  .result-row .pstat{flex:1; text-align:center;}
+  .result .start-btn{margin-bottom:10px;}
+  .result .ghost{width:100%; background:transparent; border:1px solid var(--line); color:var(--muted); border-radius:14px; padding:13px; font-weight:700; cursor:pointer; font-family:inherit; font-size:14px;}
+
+  .hide{display:none !important;}
+  footer{text-align:center; color:var(--faint); font-size:11px; margin-top:auto; padding-top:22px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><span class="x">✕</span><div>Times<br><small>rep trainer</small></div></div>
+    <div id="topRight" style="font-size:12px;color:var(--muted);font-weight:600;"></div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-mode="practice">Practice</button>
+    <button class="tab" data-mode="focus">Focus</button>
+    <button class="tab" data-mode="speed">Speed</button>
+    <button class="tab" data-mode="progress">Progress</button>
+  </div>
+
+  <div id="controls"></div>
+
+  <!-- DRILL -->
+  <div id="drill">
+    <div class="stats" id="sessionStats"></div>
+    <div class="card" id="drillCard">
+      <div class="problem" id="problem">— <span class="op">×</span> —</div>
+      <div class="answer empty" id="answer">·</div>
+      <div class="hint" id="hint"></div>
+      <div class="pad" id="pad"></div>
+      <div class="kbhint">Type with your keyboard &nbsp;·&nbsp; <b>⌫</b> delete &nbsp;·&nbsp; <b>esc</b> clear</div>
+    </div>
+  </div>
+
+  <!-- PROGRESS -->
+  <div id="progress" class="hide">
+    <div class="pstats" id="lifeStats"></div>
+    <div class="htitle">
+      <h3>Mastery map</h3>
+      <div class="legend"><span>weak</span><i style="background:#3a2230"></i><i style="background:#5a3a20"></i><i style="background:#4d5a1f"></i><i style="background:#1f5a3a"></i><i style="background:#16a34a"></i><span>solid</span></div>
+    </div>
+    <div class="heat" id="heat"></div>
+    <div class="heat-info" id="heatInfo">Tap any square to see your record on that fact.</div>
+    <button class="reset" id="resetBtn">Reset all progress</button>
+  </div>
+
+  <footer>Built for fast reps · progress saved on this device</footer>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="result">
+    <h2>Time's up</h2>
+    <div class="big" id="rBig">0</div>
+    <div class="sub" id="rSub">correct answers</div>
+    <div class="result-row">
+      <div class="pstat"><div class="v" id="rAcc">0%</div><div class="k">Accuracy</div></div>
+      <div class="pstat"><div class="v" id="rSpd">0s</div><div class="k">Avg time</div></div>
+      <div class="pstat"><div class="v" id="rStk">0</div><div class="k">Best streak</div></div>
+    </div>
+    <button class="start-btn" id="rAgain">Go again</button>
+    <button class="ghost" id="rClose">Back</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ------------------------------------------------------------------ *
+ *  Times — multiplication rep trainer (single file, offline-first)
+ * ------------------------------------------------------------------ */
+const KEY = 'times_trainer_v1';
+const MAXF = 12;                 // up to 12 × 12
+
+/* ---------- persistent state ---------- */
+function fresh(){
+  return {
+    settings:{ tables:[2,3,4,5,6,7,8,9,10,11,12], focus:7, dur:60 },
+    facts:{},                                            // "a x b" -> {reps,misses,timeSum,best,last}
+    lifetime:{ reps:0, misses:0, timeSum:0, bestStreak:0 }
+  };
+}
+let state;
+try{ state = Object.assign(fresh(), JSON.parse(localStorage.getItem(KEY)||'{}')); }
+catch(e){ state = fresh(); }
+state.settings = Object.assign(fresh().settings, state.settings||{});
+state.lifetime = Object.assign(fresh().lifetime, state.lifetime||{});
+state.facts = state.facts||{};
+function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const fk = (a,b)=> a+'x'+b;
+const fmt = ms => (ms/1000).toFixed(1)+'s';
+function ensure(k){ return state.facts[k] || (state.facts[k]={reps:0,misses:0,timeSum:0,best:0,last:0}); }
+function mastery(k){
+  const s = state.facts[k];
+  if(!s || s.reps===0) return 0;
+  const acc = s.reps/(s.reps+s.misses);
+  const avg = s.timeSum/s.reps;
+  const spd = avg<=2000?1 : avg<=3500?.82 : avg<=5000?.58 : .38;
+  const conf = Math.min(1, s.reps/3);
+  return Math.max(0, Math.min(1, acc*spd*conf));
+}
+
+/* ---------- session ---------- */
+let mode = 'practice';
+let session = null;
+function newSession(m){
+  session = { mode:m, input:'', locked:false, hadWrong:false,
+    cur:null, correct:0, wrong:0, timeSum:0, streak:0, best:0,
+    speedActive:false, remaining:state.settings.dur, timer:null };
+}
+
+/* ---------- problem pool & picking ---------- */
+function pool(){
+  const out=[];
+  if(mode==='focus'){
+    const a = state.settings.focus;
+    for(let b=1;b<=MAXF;b++) out.push({a,b});
+  }else{
+    const tabs = state.settings.tables.length?state.settings.tables:[2];
+    for(const a of tabs) for(let b=1;b<=MAXF;b++) out.push({a,b});
+  }
+  return out;
+}
+function pickNext(){
+  const p = pool();
+  const last = session.cur ? fk(session.cur.a,session.cur.b) : null;
+  const weighted = p.map(f=>{
+    const k = fk(f.a,f.b);
+    const s = state.facts[k];
+    let w;
+    if(!s || s.reps===0) w = 6;                 // unseen → show often
+    else { w = (1-mastery(k))*5 + 0.5; if(s.misses>s.reps) w += 2; }
+    if(k===last && p.length>1) w *= 0.12;        // avoid immediate repeat
+    return {f, w, k};
+  });
+  let total = weighted.reduce((a,x)=>a+x.w,0), r = Math.random()*total;
+  for(const x of weighted){ if((r-=x.w)<=0) return x.f; }
+  return weighted[0].f;
+}
+function nextProblem(){
+  const f = pickNext();
+  session.cur = {a:f.a, b:f.b, ans:f.a*f.b, key:fk(f.a,f.b), t0:performance.now()};
+  session.input=''; session.hadWrong=false;
+  $('#problem').innerHTML = f.a+' <span class="op">×</span> '+f.b;
+  $('#problem').style.animation='none'; void $('#problem').offsetWidth; $('#problem').style.animation='';
+  $('#hint').classList.remove('show'); $('#hint').textContent='';
+  renderAnswer();
+}
+
+/* ---------- answer entry ---------- */
+function renderAnswer(){
+  const el = $('#answer');
+  el.classList.remove('good','bad');
+  if(session.input===''){ el.classList.add('empty'); el.textContent='·'; }
+  else { el.classList.remove('empty'); el.textContent=session.input; }
+}
+function pushDigit(d){
+  if(!session || session.locked || !session.cur) return;
+  if(mode==='speed' && !session.speedActive) return;
+  if(session.input.length>=4) return;
+  session.input += d; renderAnswer(); evaluate();
+}
+function backspace(){ if(session && !session.locked){ session.input=session.input.slice(0,-1); renderAnswer(); } }
+function clearInput(){ if(session && !session.locked){ session.input=''; renderAnswer(); } }
+function evaluate(){
+  const ans = String(session.cur.ans);
+  if(session.input===ans) return onCorrect();
+  if(session.input.length>=ans.length) return onWrong();
+}
+function onCorrect(){
+  session.locked = true;
+  const t = performance.now()-session.cur.t0;
+  const s = ensure(session.cur.key);
+  s.reps++; s.timeSum+=t; s.best = s.best? Math.min(s.best,t):t; s.last=Date.now();
+  state.lifetime.reps++; state.lifetime.timeSum+=t;
+  session.correct++; session.timeSum+=t; session.streak++;
+  if(session.streak>session.best) session.best=session.streak;
+  if(session.streak>state.lifetime.bestStreak) state.lifetime.bestStreak=session.streak;
+  save();
+  const el=$('#answer'); el.classList.remove('empty','bad'); el.classList.add('good');
+  renderSessionStats();
+  setTimeout(()=>{ session.locked=false; nextProblem(); }, 165);
+}
+function onWrong(){
+  session.locked = true;
+  const s = ensure(session.cur.key);
+  s.misses++; state.lifetime.misses++;
+  session.wrong++; session.streak=0; session.hadWrong=true;
+  save();
+  const el=$('#answer'); el.classList.remove('empty','good'); el.classList.add('bad');
+  const h=$('#hint'); h.textContent = session.cur.a+' × '+session.cur.b+' = '+session.cur.ans; h.classList.add('show');
+  renderSessionStats();
+  setTimeout(()=>{ session.input=''; renderAnswer(); session.locked=false; }, 480);
+}
+
+/* ---------- session stat chips ---------- */
+function renderSessionStats(){
+  const box = $('#sessionStats');
+  if(mode==='speed'){
+    box.innerHTML =
+      stat(session.speedActive?session.remaining+'s':state.settings.dur+'s','Time', session.speedActive&&session.remaining<=10)+
+      stat(session.correct,'Correct')+
+      stat(session.streak,'Streak', session.streak>=5);
+  }else{
+    const total = session.correct+session.wrong;
+    const acc = total? Math.round(session.correct/total*100)+'%' : '—';
+    const avg = session.correct? fmt(session.timeSum/session.correct) : '—';
+    box.innerHTML =
+      stat(session.streak,'Streak', session.streak>=5)+
+      stat(session.correct,'Reps')+
+      stat(acc,'Accuracy')+
+      stat(avg,'Avg');
+  }
+}
+function stat(v,k,hot){ return '<div class="stat'+(hot?' hot':'')+'"><div class="v">'+v+'</div><div class="k">'+k+'</div></div>'; }
+
+/* ---------- speed mode ---------- */
+function startSpeed(){
+  newSession('speed'); session.speedActive=true; session.remaining=state.settings.dur;
+  renderControls(); renderSessionStats(); nextProblem();
+  session.timer = setInterval(()=>{
+    session.remaining--; renderSessionStats();
+    if(session.remaining<=0) endSpeed();
+  },1000);
+}
+function endSpeed(){
+  clearInterval(session.timer); session.speedActive=false;
+  const total=session.correct+session.wrong;
+  $('#rBig').textContent = session.correct;
+  $('#rSub').textContent = 'correct in '+state.settings.dur+'s · '+(session.correct/state.settings.dur*60).toFixed(0)+'/min pace';
+  $('#rAcc').textContent = total? Math.round(session.correct/total*100)+'%' : '—';
+  $('#rSpd').textContent = session.correct? fmt(session.timeSum/session.correct) : '—';
+  $('#rStk').textContent = session.best;
+  $('#overlay').classList.add('show');
+}
+
+/* ---------- controls per mode ---------- */
+function renderControls(){
+  const c = $('#controls');
+  if(mode==='practice'){
+    c.innerHTML = '<div class="ctl-label">Tables in the mix</div>'+chips(state.settings.tables,'toggle');
+  }else if(mode==='focus'){
+    c.innerHTML = '<div class="ctl-label">Drill one table</div>'+chips([state.settings.focus],'solo');
+  }else if(mode==='speed'){
+    if(session && session.speedActive){ c.innerHTML=''; return; }
+    c.innerHTML =
+      '<div class="ctl-label">Round length</div>'+
+      '<div class="dur">'+[30,60,120].map(d=>'<button class="chip'+(state.settings.dur===d?' on':'')+'" data-dur="'+d+'">'+d+'s</button>').join('')+'</div>'+
+      '<div class="ctl-label">Tables in the mix</div>'+chips(state.settings.tables,'toggle')+
+      '<div style="height:12px"></div><button class="start-btn" id="speedStart">Start '+state.settings.dur+'s round</button>';
+  }else{ c.innerHTML=''; }
+  wireControls();
+}
+function chips(active, kind){
+  let h='<div class="chips">';
+  for(let n=1;n<=MAXF;n++){
+    const on = kind==='solo' ? n===state.settings.focus : active.includes(n);
+    h+='<button class="chip'+(kind==='solo'?' solo':'')+(on?' on':'')+'" data-n="'+n+'" data-kind="'+kind+'">'+n+'</button>';
+  }
+  return h+'</div>';
+}
+function wireControls(){
+  document.querySelectorAll('#controls .chip[data-n]').forEach(b=>b.onclick=()=>{
+    const n=+b.dataset.n, kind=b.dataset.kind;
+    if(kind==='solo'){ state.settings.focus=n; save(); renderControls(); newSession('focus'); renderSessionStats(); nextProblem(); }
+    else{
+      const t=state.settings.tables, i=t.indexOf(n);
+      if(i>=0){ if(t.length>1) t.splice(i,1); } else t.push(n);
+      t.sort((x,y)=>x-y); save(); renderControls();
+    }
+  });
+  document.querySelectorAll('#controls .chip[data-dur]').forEach(b=>b.onclick=()=>{
+    state.settings.dur=+b.dataset.dur; save(); renderControls();
+  });
+  const ss=$('#speedStart'); if(ss) ss.onclick=startSpeed;
+}
+
+/* ---------- numpad ---------- */
+function buildPad(){
+  const keys=['7','8','9','4','5','6','1','2','3'];
+  let h='';
+  keys.forEach(k=>h+='<button class="key" data-d="'+k+'">'+k+'</button>');
+  h+='<button class="key util" data-act="clear">C</button>';
+  h+='<button class="key" data-d="0">0</button>';
+  h+='<button class="key util" data-act="back">⌫</button>';
+  $('#pad').innerHTML=h;
+  $('#pad').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    if(b.dataset.d!=null) pushDigit(b.dataset.d);
+    else if(b.dataset.act==='back') backspace();
+    else clearInput();
+  });
+}
+
+/* ---------- progress / heatmap ---------- */
+function renderProgress(){
+  const total = state.lifetime.reps+state.lifetime.misses;
+  const acc = total? Math.round(state.lifetime.reps/total*100)+'%' : '—';
+  const avg = state.lifetime.reps? fmt(state.lifetime.timeSum/state.lifetime.reps) : '—';
+  let mastered=0; for(let a=1;a<=MAXF;a++) for(let b=1;b<=MAXF;b++) if(mastery(fk(a,b))>=0.9) mastered++;
+  $('#lifeStats').innerHTML =
+    pstat(state.lifetime.reps.toLocaleString(),'Total reps')+
+    pstat(acc,'Lifetime accuracy')+
+    pstat(avg,'Avg recall time')+
+    pstat(mastered+' / 144','Facts mastered');
+
+  let h='<div class="hc lbl"></div>';
+  for(let b=1;b<=MAXF;b++) h+='<div class="hc lbl">'+b+'</div>';
+  for(let a=1;a<=MAXF;a++){
+    h+='<div class="hc lbl">'+a+'</div>';
+    for(let b=1;b<=MAXF;b++){
+      const k=fk(a,b), m=mastery(k), s=state.facts[k];
+      h+='<div class="hc" data-k="'+k+'" style="background:'+heatColor(m,s)+'">'+(a*b)+'</div>';
+    }
+  }
+  $('#heat').innerHTML=h;
+  $('#heat').querySelectorAll('.hc[data-k]').forEach(c=>{
+    c.onclick=()=>{
+      const k=c.dataset.k, s=state.facts[k], [a,b]=k.split('x');
+      if(!s||s.reps===0){ $('#heatInfo').textContent = a+' × '+b+' = '+(a*b)+'  —  not practiced yet'; return; }
+      const acc=Math.round(s.reps/(s.reps+s.misses)*100), avg=fmt(s.timeSum/s.reps);
+      $('#heatInfo').textContent = a+' × '+b+' = '+(a*b)+'   ·   '+s.reps+' reps · '+acc+'% · '+avg+' avg · '+fmt(s.best)+' best';
+    };
+  });
+}
+function pstat(v,k){ return '<div class="pstat"><div class="v">'+v+'</div><div class="k">'+k+'</div></div>'; }
+function heatColor(m,s){
+  if(!s||s.reps===0) return '#222838';
+  if(m<0.34) return '#3a2230';
+  if(m<0.55) return '#5a3a20';
+  if(m<0.72) return '#4d5a1f';
+  if(m<0.9)  return '#1f5a3a';
+  return '#16a34a';
+}
+
+/* ---------- mode switching ---------- */
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.mode===m));
+  const isProg = m==='progress';
+  $('#drill').classList.toggle('hide', isProg);
+  $('#progress').classList.toggle('hide', !isProg);
+  if(session && session.timer){ clearInterval(session.timer); }
+  if(isProg){ renderControls(); renderProgress(); $('#topRight').textContent=''; return; }
+  newSession(m);
+  renderControls();
+  renderSessionStats();
+  if(m==='speed'){ $('#problem').innerHTML='— <span class="op">×</span> —'; $('#answer').className='answer empty'; $('#answer').textContent='·'; $('#hint').classList.remove('show'); $('#topRight').textContent=''; }
+  else { nextProblem(); }
+}
+
+/* ---------- wire up ---------- */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>setMode(t.dataset.mode));
+document.addEventListener('keydown', e=>{
+  if(mode==='progress') return;
+  if(e.key>='0'&&e.key<='9'){ pushDigit(e.key); e.preventDefault(); }
+  else if(e.key==='Backspace'){ backspace(); e.preventDefault(); }
+  else if(e.key==='Escape'){ clearInput(); }
+});
+$('#resetBtn').onclick=()=>{
+  if(confirm('Erase all progress and stats on this device? This can’t be undone.')){
+    state=fresh(); save(); renderProgress(); renderControls();
+  }
+};
+$('#rAgain').onclick=()=>{ $('#overlay').classList.remove('show'); startSpeed(); };
+$('#rClose').onclick=()=>{ $('#overlay').classList.remove('show'); setMode('speed'); };
+
+buildPad();
+setMode('practice');
+</script>
+</body>
+</html>
