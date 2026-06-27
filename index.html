@@ -168,6 +168,25 @@
   .reset{margin:22px auto 0; display:block; background:transparent; border:1px solid var(--line); color:var(--faint); padding:10px 16px; border-radius:11px; font-weight:600; cursor:pointer; font-family:inherit; font-size:12.5px; transition:.16s var(--ease);}
   .reset:hover{border-color:var(--bad); color:var(--bad);}
 
+  /* ---------- analytics ---------- */
+  .atitle{font-size:13px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); font-weight:700; margin:22px 2px 11px;}
+  .empty-card{background:var(--surface); border:1px dashed var(--line-2); border-radius:14px; padding:18px 16px; color:var(--faint); font-size:12.5px; text-align:center; line-height:1.55;}
+  .chart{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px 16px 12px;}
+  .chart svg{width:100%; height:auto; display:block;}
+  .chart-callout{display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 9px; margin-bottom:14px;}
+  .chart-callout .big{font-family:var(--mono); font-weight:700; font-size:23px; color:var(--accent); letter-spacing:-.5px; line-height:1;}
+  .chart-callout .lbl{font-size:12px; color:var(--muted);}
+  .chart-x{display:flex; justify-content:space-between; margin-top:8px; padding:0 2px; font-size:10px; color:var(--faint); font-family:var(--mono); letter-spacing:.3px;}
+  .lb{display:flex; flex-direction:column; gap:7px;}
+  .lb-row{display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--line); border-radius:13px; padding:11px 13px;}
+  .lb-row.top{border-color:var(--accent-line); background:linear-gradient(90deg,var(--accent-soft),transparent);}
+  .lb-rank{width:24px; height:24px; flex:none; display:grid; place-items:center; border-radius:8px; background:var(--surface-2); color:var(--muted); font-family:var(--mono); font-weight:700; font-size:12px;}
+  .lb-row.top .lb-rank{background:var(--accent); color:#06231a;}
+  .lb-main{flex:1; min-width:0;}
+  .lb-date{font-weight:600; font-size:14px;}
+  .lb-sub{font-size:11px; color:var(--faint); font-family:var(--mono); margin-top:2px;}
+  .lb-val{font-family:var(--mono); font-weight:700; font-size:18px; color:var(--accent); letter-spacing:-.5px;}
+
   /* ---------- speed result overlay ---------- */
   .overlay{position:fixed; inset:0; background:rgba(8,9,11,.82); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); display:none; align-items:center; justify-content:center; padding:20px; z-index:60;}
   .overlay.show{display:flex; animation:fade .25s var(--ease);}
@@ -219,6 +238,16 @@
   <!-- PROGRESS -->
   <div id="progress" class="hide">
     <div class="pstats" id="lifeStats"></div>
+
+    <div class="atitle">Speed over time · lower is faster</div>
+    <div id="trend"></div>
+
+    <div class="atitle">Personal records</div>
+    <div class="pstats" id="records"></div>
+
+    <div class="atitle">Fastest days · leaderboard</div>
+    <div id="leaderboard"></div>
+
     <div id="weakBanner"></div>
     <div class="htitle">
       <h3>Mastery map</h3>
@@ -260,7 +289,10 @@ function fresh(){
   return {
     settings:{ tables:[2,3,4,5,6,7,8,9,10,11,12], focus:7, dur:60 },
     facts:{},                                            // "a x b" -> {reps,misses,timeSum,best,last}
-    lifetime:{ reps:0, misses:0, timeSum:0, bestStreak:0 }
+    lifetime:{ reps:0, misses:0, timeSum:0, bestStreak:0 },
+    daily:{},                                            // "YYYY-MM-DD" -> {reps,misses,timeSum,best}
+    recent:[],                                           // rolling rep times in ms (last 120) — for the early trend
+    records:{ bestSpeed:0, bestSpeedDur:0, bestSpeedDate:null, fastestRep:0, fastestRepKey:null, fastestRepDate:null }
   };
 }
 let state;
@@ -269,6 +301,9 @@ catch(e){ state = fresh(); }
 state.settings = Object.assign(fresh().settings, state.settings||{});
 state.lifetime = Object.assign(fresh().lifetime, state.lifetime||{});
 state.facts = state.facts||{};
+state.daily = state.daily||{};
+state.recent = state.recent||[];
+state.records = Object.assign(fresh().records, state.records||{});
 function save(){ localStorage.setItem(KEY, JSON.stringify(state)); }
 
 /* ---------- helpers ---------- */
@@ -276,6 +311,15 @@ const $ = s => document.querySelector(s);
 const fk = (a,b)=> a+'x'+b;
 const fmt = ms => (ms/1000).toFixed(1)+'s';
 function ensure(k){ return state.facts[k] || (state.facts[k]={reps:0,misses:0,timeSum:0,best:0,last:0}); }
+function today(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function ensureDay(){ const k=today(); return state.daily[k] || (state.daily[k]={reps:0,misses:0,timeSum:0,best:0}); }
+function shortDate(iso){ const p=iso.split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][(+p[1])-1]+' '+(+p[2]); }
+function dayList(){
+  return Object.keys(state.daily).filter(k=>state.daily[k].reps>0).sort().map(k=>{
+    const d=state.daily[k];
+    return {date:k, avg:d.timeSum/d.reps, reps:d.reps, acc:d.reps/(d.reps+d.misses), best:d.best};
+  });
+}
 function mastery(k){
   const s = state.facts[k];
   if(!s || s.reps===0) return 0;
@@ -402,6 +446,9 @@ function onCorrect(){
   const s = ensure(session.cur.key);
   s.reps++; s.timeSum+=t; s.best = s.best? Math.min(s.best,t):t; s.last=Date.now();
   state.lifetime.reps++; state.lifetime.timeSum+=t;
+  const day=ensureDay(); day.reps++; day.timeSum+=t; if(!day.best||t<day.best) day.best=t;
+  state.recent.push(t); if(state.recent.length>120) state.recent.shift();
+  if(!state.records.fastestRep || t<state.records.fastestRep){ state.records.fastestRep=t; state.records.fastestRepKey=session.cur.key; state.records.fastestRepDate=today(); }
   session.correct++; session.timeSum+=t; session.streak++;
   if(session.streak>session.best) session.best=session.streak;
   if(session.streak>state.lifetime.bestStreak) state.lifetime.bestStreak=session.streak;
@@ -414,7 +461,7 @@ function onCorrect(){
 function onWrong(){
   session.locked = true;
   const s = ensure(session.cur.key);
-  s.misses++; state.lifetime.misses++;
+  s.misses++; state.lifetime.misses++; ensureDay().misses++;
   session.wrong++; session.streak=0; session.hadWrong=true;
   save();
   const el=$('#answer'); el.classList.remove('empty','good'); el.classList.add('bad');
@@ -456,6 +503,7 @@ function startSpeed(){
 function endSpeed(){
   clearInterval(session.timer); session.speedActive=false;
   const total=session.correct+session.wrong;
+  if(session.correct > (state.records.bestSpeed||0)){ state.records.bestSpeed=session.correct; state.records.bestSpeedDur=state.settings.dur; state.records.bestSpeedDate=today(); save(); }
   $('#rBig').textContent = session.correct;
   $('#rSub').textContent = 'correct in '+state.settings.dur+'s · '+(session.correct/state.settings.dur*60).toFixed(0)+'/min pace';
   $('#rAcc').textContent = total? Math.round(session.correct/total*100)+'%' : '—';
@@ -555,6 +603,8 @@ function renderProgress(){
     pstat(avg,'Avg recall time')+
     pstat(mastered+' / 144','Facts mastered');
 
+  renderTrend(); renderRecords(); renderLeaderboard();
+
   const wf = weakFacts(6), wb = $('#weakBanner');
   if(wf.length){
     wb.innerHTML =
@@ -594,6 +644,93 @@ function heatColor(m,s){
   if(m<0.70) return '#4f6147';
   if(m<0.90) return '#357f5a';
   return '#2fcf8e';
+}
+
+/* ---------- analytics: speed-over-time ---------- */
+function trendSeries(){
+  const days=dayList();
+  if(days.length>=2) return {mode:'days', pts:days.slice(-21).map(d=>({label:shortDate(d.date), v:d.avg}))};
+  const r=state.recent||[];
+  if(r.length>=4){                                   // not enough days yet → show recent reps so there's an instant curve
+    const buckets=Math.min(12,r.length), size=Math.ceil(r.length/buckets), pts=[];
+    for(let i=0;i<r.length;i+=size){ const sl=r.slice(i,i+size); pts.push({label:'', v:sl.reduce((a,b)=>a+b,0)/sl.length}); }
+    return {mode:'recent', pts};
+  }
+  if(days.length===1) return {mode:'days', pts:[{label:shortDate(days[0].date), v:days[0].avg}]};
+  return {mode:'empty', pts:[]};
+}
+function lineChartSVG(pts){
+  const W=600,H=210,padL=52,padR=16,padT=18,padB=16;
+  const plotW=W-padL-padR, plotH=H-padT-padB, baseY=padT+plotH;
+  const vals=pts.map(p=>p.v); let mn=Math.min(...vals), mx=Math.max(...vals);
+  if(mx===mn) mx=mn+0.0001;
+  const span=mx-mn, lo=mn-span*0.18, hi=mx+span*0.18;
+  const X=i=> pts.length<=1 ? padL+plotW/2 : padL+(i/(pts.length-1))*plotW;
+  const Y=v=> padT+(hi-v)/(hi-lo)*plotH;             // slower (high) at top, faster (low) at bottom → improving line falls
+  let line='', area='';
+  pts.forEach((p,i)=>{ line+=(i?'L':'M')+X(i).toFixed(1)+' '+Y(p.v).toFixed(1)+' '; });
+  if(pts.length>1){
+    area='M'+X(0).toFixed(1)+' '+baseY+' ';
+    pts.forEach((p,i)=>{ area+='L'+X(i).toFixed(1)+' '+Y(p.v).toFixed(1)+' '; });
+    area+='L'+X(pts.length-1).toFixed(1)+' '+baseY+' Z';
+  }
+  const lx=X(pts.length-1).toFixed(1), ly=Y(pts[pts.length-1].v).toFixed(1);
+  const yMx=Y(mx).toFixed(1), yMn=Y(mn).toFixed(1);
+  return '<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg">'+
+    '<defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">'+
+      '<stop offset="0" stop-color="#2fcf8e" stop-opacity="0.26"/><stop offset="1" stop-color="#2fcf8e" stop-opacity="0"/>'+
+    '</linearGradient></defs>'+
+    '<line x1="'+padL+'" y1="'+yMx+'" x2="'+(W-padR)+'" y2="'+yMx+'" stroke="#26262e"/>'+
+    '<line x1="'+padL+'" y1="'+yMn+'" x2="'+(W-padR)+'" y2="'+yMn+'" stroke="#26262e"/>'+
+    (area?'<path d="'+area+'" fill="url(#tg)"/>':'')+
+    '<path d="'+line+'" fill="none" stroke="#2fcf8e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>'+
+    '<circle cx="'+lx+'" cy="'+ly+'" r="4.5" fill="#2fcf8e"/>'+
+    '<text x="'+(padL-8)+'" y="'+yMx+'" text-anchor="end" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="13" fill="#5d5d68">'+fmt(mx)+'</text>'+
+    '<text x="'+(padL-8)+'" y="'+yMn+'" text-anchor="end" dominant-baseline="middle" font-family="ui-monospace,monospace" font-size="13" fill="#9a9aa6">'+fmt(mn)+'</text>'+
+    '</svg>';
+}
+function renderTrend(){
+  const el=$('#trend'), s=trendSeries();
+  if(s.mode==='empty'){
+    el.innerHTML='<div class="empty-card">Do a handful of reps and your speed curve appears here — watch the line drop as you get quicker. Counts every mode.</div>';
+    return;
+  }
+  const pts=s.pts, first=pts[0].v, last=pts[pts.length-1].v;
+  const pct=first>0?Math.round((1-last/first)*100):0;
+  let head;
+  if(pts.length<2) head='<span class="big">'+fmt(last)+'</span><span class="lbl">your average so far — keep going to watch it drop</span>';
+  else if(pct>0)   head='<span class="big">'+pct+'% faster</span><span class="lbl">than when you started'+(s.mode==='days'?' · '+pts[0].label:'')+'</span>';
+  else             head='<span class="big">'+fmt(last)+'</span><span class="lbl">current pace — push for a new best</span>';
+  const xa=s.mode==='days'?pts[0].label:'older', xb=s.mode==='days'?pts[pts.length-1].label:'now';
+  el.innerHTML='<div class="chart"><div class="chart-callout">'+head+'</div>'+lineChartSVG(pts)+
+    '<div class="chart-x"><span>'+xa+'</span><span>'+xb+'</span></div></div>';
+}
+function renderRecords(){
+  const r=state.records||{};
+  const fastest=r.fastestRep?fmt(r.fastestRep):'—';
+  const fastestK=r.fastestRepKey?('Fastest answer · '+r.fastestRepKey.replace('x','×')):'Fastest answer';
+  const bestSpeed=r.bestSpeed?r.bestSpeed:'—';
+  const bestSpeedK=r.bestSpeed?('Best '+r.bestSpeedDur+'s round'):'Best speed round';
+  const elig=dayList().filter(d=>d.reps>=3);
+  const bestDay=elig.length?fmt(Math.min.apply(null,elig.map(d=>d.avg))):'—';
+  $('#records').innerHTML=
+    pstat(fastest,fastestK)+
+    pstat(bestSpeed,bestSpeedK)+
+    pstat(state.lifetime.bestStreak||0,'Longest streak')+
+    pstat(bestDay,'Fastest day avg');
+}
+function renderLeaderboard(){
+  const days=dayList().filter(d=>d.reps>=3).sort((a,b)=>a.avg-b.avg).slice(0,5);
+  if(!days.length){
+    $('#leaderboard').innerHTML='<div class="empty-card">Log a day with 3+ reps and your fastest days rank here. Beat your average to climb the board.</div>';
+    return;
+  }
+  $('#leaderboard').innerHTML='<div class="lb">'+days.map((d,i)=>
+    '<div class="lb-row'+(i===0?' top':'')+'">'+
+      '<span class="lb-rank">'+(i+1)+'</span>'+
+      '<div class="lb-main"><div class="lb-date">'+shortDate(d.date)+'</div><div class="lb-sub">'+d.reps+' reps · '+Math.round(d.acc*100)+'%</div></div>'+
+      '<div class="lb-val">'+fmt(d.avg)+'</div>'+
+    '</div>').join('')+'</div>';
 }
 
 /* ---------- mode switching ---------- */
