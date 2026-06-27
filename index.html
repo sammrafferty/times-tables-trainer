@@ -43,8 +43,8 @@
 
   .tabs{display:flex; gap:4px; background:var(--card); border:1px solid var(--line); padding:4px; border-radius:14px; margin-bottom:16px;}
   .tab{
-    flex:1; border:0; background:transparent; color:var(--muted); font-weight:700; font-size:13.5px;
-    padding:9px 4px; border-radius:10px; cursor:pointer; transition:.18s; font-family:inherit;
+    flex:1; border:0; background:transparent; color:var(--muted); font-weight:700; font-size:12.5px;
+    padding:9px 2px; border-radius:10px; cursor:pointer; transition:.18s; font-family:inherit; white-space:nowrap;
   }
   .tab.active{background:var(--accent); color:#fff; box-shadow:0 4px 12px rgba(99,102,241,.35);}
   .tab:not(.active):hover{color:var(--text);}
@@ -164,6 +164,7 @@
     <button class="tab active" data-mode="practice">Practice</button>
     <button class="tab" data-mode="focus">Focus</button>
     <button class="tab" data-mode="speed">Speed</button>
+    <button class="tab" data-mode="weak">Weak</button>
     <button class="tab" data-mode="progress">Progress</button>
   </div>
 
@@ -184,6 +185,7 @@
   <!-- PROGRESS -->
   <div id="progress" class="hide">
     <div class="pstats" id="lifeStats"></div>
+    <div id="weakBanner"></div>
     <div class="htitle">
       <h3>Mastery map</h3>
       <div class="legend"><span>weak</span><i style="background:#3a2230"></i><i style="background:#5a3a20"></i><i style="background:#4d5a1f"></i><i style="background:#1f5a3a"></i><i style="background:#16a34a"></i><span>solid</span></div>
@@ -250,6 +252,36 @@ function mastery(k){
   return Math.max(0, Math.min(1, acc*spd*conf));
 }
 
+/* ---------- range presets ---------- */
+const PRESETS = [
+  {label:'1–6',  lo:1, hi:6},
+  {label:'1–9',  lo:1, hi:9},
+  {label:'1–12', lo:1, hi:12},
+  {label:'6–12', lo:6, hi:12},
+];
+function rangeSet(lo,hi){ const a=[]; for(let n=lo;n<=hi;n++) a.push(n); return a; }
+function sameSet(a,b){ return a.length===b.length && a.every((x,i)=>x===b[i]); }
+
+/* ---------- weak-spot detection ----------
+ * A fact counts as "weak" once we've seen it (reps>0), it isn't mastered yet
+ * (mastery<0.9), and there's real evidence of struggle: a miss, or low mastery
+ * (slow/shaky). Worst-first by a struggle score that weights misses heavily. */
+function weakFacts(limit){
+  const arr=[];
+  for(let a=1;a<=MAXF;a++) for(let b=1;b<=MAXF;b++){
+    const k=fk(a,b), s=state.facts[k];
+    if(!s || s.reps===0) continue;
+    const m=mastery(k);
+    if(m>=0.9) continue;
+    const missRate = s.misses/(s.reps+s.misses);
+    if(!(s.misses>0 || m<0.55)) continue;        // needs evidence of struggle
+    const score = (1-m) + missRate*0.6;
+    arr.push({a,b,k,m,score});
+  }
+  arr.sort((x,y)=>y.score-x.score);
+  return limit ? arr.slice(0,limit) : arr;
+}
+
 /* ---------- session ---------- */
 let mode = 'practice';
 let session = null;
@@ -262,6 +294,9 @@ function newSession(m){
 /* ---------- problem pool & picking ---------- */
 function pool(){
   const out=[];
+  if(mode==='weak'){
+    return weakFacts(15).map(x=>({a:x.a,b:x.b}));
+  }
   if(mode==='focus'){
     const a = state.settings.focus;
     for(let b=1;b<=MAXF;b++) out.push({a,b});
@@ -273,6 +308,7 @@ function pool(){
 }
 function pickNext(){
   const p = pool();
+  if(!p.length) return null;
   const last = session.cur ? fk(session.cur.a,session.cur.b) : null;
   const weighted = p.map(f=>{
     const k = fk(f.a,f.b);
@@ -289,12 +325,21 @@ function pickNext(){
 }
 function nextProblem(){
   const f = pickNext();
+  if(!f){ weakCleared(); return; }
   session.cur = {a:f.a, b:f.b, ans:f.a*f.b, key:fk(f.a,f.b), t0:performance.now()};
   session.input=''; session.hadWrong=false;
   $('#problem').innerHTML = f.a+' <span class="op">×</span> '+f.b;
   $('#problem').style.animation='none'; void $('#problem').offsetWidth; $('#problem').style.animation='';
   $('#hint').classList.remove('show'); $('#hint').textContent='';
   renderAnswer();
+}
+/* shown in Weak mode when there's nothing left to drill */
+function weakCleared(){
+  session.cur=null;
+  $('#problem').innerHTML='<span style="font-size:.34em;color:var(--good);font-weight:800;letter-spacing:.5px">✓ no weak spots right&nbsp;now</span>';
+  $('#answer').className='answer empty'; $('#answer').textContent='·';
+  $('#hint').classList.remove('show'); $('#hint').textContent='';
+  renderControls();
 }
 
 /* ---------- answer entry ---------- */
@@ -329,6 +374,7 @@ function onCorrect(){
   save();
   const el=$('#answer'); el.classList.remove('empty','bad'); el.classList.add('good');
   renderSessionStats();
+  if(mode==='weak') renderControls();
   setTimeout(()=>{ session.locked=false; nextProblem(); }, 165);
 }
 function onWrong(){
@@ -385,10 +431,20 @@ function endSpeed(){
 }
 
 /* ---------- controls per mode ---------- */
+function rangeControls(){
+  return '<div class="ctl-label">Quick range</div>'+
+    '<div class="dur">'+PRESETS.map(p=>{
+      const on = sameSet(state.settings.tables, rangeSet(p.lo,p.hi));
+      return '<button class="chip'+(on?' on':'')+'" data-lo="'+p.lo+'" data-hi="'+p.hi+'">'+p.label+'</button>';
+    }).join('')+'</div>'+
+    '<div class="ctl-label" style="margin-top:14px">Tables in the mix · tap to add or remove</div>'+
+    chips(state.settings.tables,'toggle');
+}
 function renderControls(){
   const c = $('#controls');
   if(mode==='practice'){
-    c.innerHTML = '<div class="ctl-label">Tables in the mix</div>'+chips(state.settings.tables,'toggle');
+    c.innerHTML = rangeControls()+
+      '<div class="kbhint" style="text-align:left;margin-top:12px">Smart mix — quietly serves the facts you’re slower or shakier on more often. Want <b>only</b> your weak spots? Tap the <b>Weak</b> tab.</div>';
   }else if(mode==='focus'){
     c.innerHTML = '<div class="ctl-label">Drill one table</div>'+chips([state.settings.focus],'solo');
   }else if(mode==='speed'){
@@ -396,8 +452,17 @@ function renderControls(){
     c.innerHTML =
       '<div class="ctl-label">Round length</div>'+
       '<div class="dur">'+[30,60,120].map(d=>'<button class="chip'+(state.settings.dur===d?' on':'')+'" data-dur="'+d+'">'+d+'s</button>').join('')+'</div>'+
-      '<div class="ctl-label">Tables in the mix</div>'+chips(state.settings.tables,'toggle')+
+      rangeControls()+
       '<div style="height:12px"></div><button class="start-btn" id="speedStart">Start '+state.settings.dur+'s round</button>';
+  }else if(mode==='weak'){
+    const w = weakFacts(15);
+    if(!w.length){
+      c.innerHTML = '<div class="ctl-label">Weak-spot drill</div>'+
+        '<div class="kbhint" style="text-align:left">Nothing to drill yet. Do some reps in <b>Practice</b> or <b>Speed</b> first — the facts you miss or answer slowly land here automatically, and this mode grinds just those until they’re solid.</div>';
+    }else{
+      c.innerHTML = '<div class="ctl-label">Drilling your '+w.length+' weakest fact'+(w.length>1?'s':'')+' — straight at what trips you up</div>'+
+        '<div class="chips">'+w.map(x=>'<button class="chip on" style="pointer-events:none;font-size:13px">'+x.a+'×'+x.b+'</button>').join('')+'</div>';
+    }
   }else{ c.innerHTML=''; }
   wireControls();
 }
@@ -421,6 +486,9 @@ function wireControls(){
   });
   document.querySelectorAll('#controls .chip[data-dur]').forEach(b=>b.onclick=()=>{
     state.settings.dur=+b.dataset.dur; save(); renderControls();
+  });
+  document.querySelectorAll('#controls .chip[data-lo]').forEach(b=>b.onclick=()=>{
+    state.settings.tables = rangeSet(+b.dataset.lo, +b.dataset.hi); save(); renderControls();
   });
   const ss=$('#speedStart'); if(ss) ss.onclick=startSpeed;
 }
@@ -452,6 +520,18 @@ function renderProgress(){
     pstat(acc,'Lifetime accuracy')+
     pstat(avg,'Avg recall time')+
     pstat(mastered+' / 144','Facts mastered');
+
+  const wf = weakFacts(6), wb = $('#weakBanner');
+  if(wf.length){
+    wb.innerHTML =
+      '<div class="ctl-label" style="margin:16px 2px 8px">Toughest right now</div>'+
+      '<div class="chips" style="margin-bottom:10px">'+
+        wf.map(x=>'<button class="chip on" style="pointer-events:none;background:var(--bad);border-color:var(--bad);font-size:13px">'+x.a+'×'+x.b+'</button>').join('')+
+      '</div>'+
+      '<button class="start-btn" id="goWeak" style="padding:12px;font-size:15px">Drill my weak spots →</button>'+
+      '<div style="height:18px"></div>';
+    $('#goWeak').onclick=()=>setMode('weak');
+  }else{ wb.innerHTML=''; }
 
   let h='<div class="hc lbl"></div>';
   for(let b=1;b<=MAXF;b++) h+='<div class="hc lbl">'+b+'</div>';
